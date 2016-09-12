@@ -10,7 +10,7 @@
 /*
 Authors: 
 	 
-Last Edited:
+Last Edited: Sept. 12, 2016
 
 */
 
@@ -22,8 +22,9 @@ typedef enum{
     tokSELECT,tokFROM,tokWHERE,tokIS,tokNOT,tokBETWEEN,tokAND,tokINSERT,
     tokINTO,tokVALUES,tokDELETE, //reserved words
     tokADD,tokSUB,tokMULT,tokDIV, //arithmetic operators
+    tokGRTR,tokLESS,tokEQL,tokGEQ,tokLEQ,tokNOTEQ, //comparison operators
     tokLPAR,tokRPAR,tokCOMMA,tokQUOTE, //delimeter
-    tokATTR,
+    tokNAME,
     NAtk,
     tokEND,tokTEXT,tokLET,tokVAL,tokEXPUNC,tokSEMICOL
     
@@ -37,7 +38,7 @@ typedef struct tokenTag{
 }Token;
 
 typedef enum{
-    selectNode,attrNode,attr2Node,whereNode,tblNode
+    selectNode,attrNode,whereNode,tblNode,stmtNode,exprNode,op1Node,op2Node,op3Node
 }NodeType;
 
 typedef struct nodeTag{
@@ -100,7 +101,19 @@ int isArithOperator(char c){  //char parameter
 
 int isArithmeticOperator(string c){ //string parameter
     if (c=="+" || c=="-" || c=="*" || c=="/" || c=="%")
-    return 1;
+    	return 1;
+    else return 0;
+}
+
+int isCompOperator(char c){
+    if(c=='>' || c=='<' || c=='=' || c=='!')
+	return 1;
+    else return 0;
+}
+
+int isComparisonOperator(string c){
+    if(c==">" || c=="<" || c=="=" || c==">=" || c=="<=" || c=="!=" || c=="<>")
+	return 1;
     else return 0;
 }
 
@@ -113,9 +126,15 @@ TokenType getArithType(char c){
 }
 
 int isStmt(TokenType type){
-   if(type==tokSELECT || type==tokINSERT || type==tokDELETE)
+    if(type==tokSELECT || type==tokINSERT || type==tokDELETE)
 	return 1;
-   else return 0;
+    else return 0;
+}
+
+int isCompOp(TokenType type){
+    if(type==tokGRTR || type==tokLESS || type==tokEQL || type==tokGEQ || type==tokLEQ || type==tokNOTEQ)
+	return 1;
+    else return 0;
 }
 
 int isRelOp(TokenType type){
@@ -191,20 +210,26 @@ Token anlzr(){
  	    }
 	}else*/ if(code[i]=='"'){
 	    idx=i+1; //do not include "
-	    while(!(code[++i]=='"')){} //CONCAT print's text
+	    while(i<code.size() || !(code[++i]=='"')){} //CONCAT print's text
 	    temp=code.substr(idx,i-idx).c_str();
 	    strcpy(token.str, temp.c_str());
 	    token.pos = lineNum;
 	    token.type = tokTEXT;
+	    if(i==code.size()){ 
+		printf("ERROR: Invalid syntax for string/character value in line %d.\n",lineNum);
+		token.type = tokEND;
+	    }
 	    offset = i+1;
 	    return token;
 	}else if(code[i]=='\''){
-	    token.str[0]=code[++i];
-    	    token.str[1]='\0'; 
+	    idx=i+1; //do not include "
+	    while(i<code.size() || !(code[++i]=='\'')){} //CONCAT print's text
+	    temp=code.substr(idx,i-idx).c_str();
+	    strcpy(token.str, temp.c_str());
 	    token.pos = lineNum;
-	    token.type = tokLET;
-	    if(code[++i]!='\''){ 
-		printf("ERROR: Invalid syntax for character value in line %d.\n",lineNum);
+	    token.type = tokTEXT;
+	    if(i==code.size()){ 
+		printf("ERROR: Invalid syntax for string/character value in line %d.\n",lineNum);
 		token.type = tokEND;
 	    }
 	    offset = ++i;
@@ -220,7 +245,7 @@ Token anlzr(){
             if(reservedWord.find(temp)!=reservedWord.end()){ 
 		  token.type = reservedWord.find(temp)->second;
 	    }else{
-		  token.type = tokATTR; //identifier
+		  token.type = tokNAME; //identifier
 	    }
 	    //printf("%s\n",temp.c_str());
 	    offset=i; 
@@ -282,10 +307,10 @@ Node* createNode(NodeType type){
 }
 
 Node* attr_more(){
-    Node *node = createNode(attr2Node);
+    Node *node = createNode(attrNode);
     if(tk.type==tokCOMMA){
 	tk = toks[offset++]; 
-	if(tk.type == tokATTR){
+	if(tk.type == tokNAME){
 	    tk = toks[offset++];
  	    node->child1 = attr_more(); //more attributes in the project operation		
     	}else{
@@ -298,7 +323,7 @@ Node* attr_more(){
 
 Node* attrib(){
     Node *node = createNode(attrNode);
-    if(tk.type == tokATTR){
+    if(tk.type == tokNAME){
 	tk = toks[offset++];
  	node->child1 = attr_more();
     }else if(tk.type == tokMULT){
@@ -311,10 +336,10 @@ Node* attrib(){
 }
 
 Node* tble_more(){
-    Node *node = createNode(attrNode);
+    Node *node = createNode(tblNode);
     if(tk.type==tokCOMMA){
  	tk = toks[offset++]; 
-	if(tk.type == tokATTR){
+	if(tk.type == tokNAME){
 	    tk = toks[offset++];
  	    node->child1 = tble_more(); //more tables		
     	}else{
@@ -328,7 +353,7 @@ Node* tble_more(){
 
 Node* tble(){
     Node *node = createNode(tblNode);
-    if(tk.type == tokATTR){
+    if(tk.type == tokNAME){
 	tk = toks[offset++];
 	node->child1 = tble_more(); //more tables	
     }else{
@@ -338,10 +363,144 @@ Node* tble(){
     return node;
 }
 
+Node* op3(){
+    Node *node = createNode(op3Node);
+    string type, var;
+
+    /*if(tk.type==tokLPAR){ 
+	node->token = toks[offset]; //attach ( to syntax tree
+        tk = toks[offset++]; 
+        node->child1 = expr(); 
+    	if(tk.type==tokRPAR){
+            tk = toks[offset++];
+            return node;
+    	}else{
+            printf("ERROR: Line %d expects ')'.\n",tk.pos);
+            exit(1);
+    	}
+    }else if(tk.type==tokIDEN){
+	    node->token = toks[offset]; //attach IDEN to syntax tree
+        var = tk.str;
+        //printf("VARIABLE %s \n", var.c_str());
+
+        if(variableIdentifiers.count(var)){
+            type = variableIdentifiers.find(var)->second;
+            if(compareCounter == 0){
+                data_type = type;
+                compareCounter++;
+            }
+            //printf("DATA TYPE: %s \n", type.c_str());
+            //printf("GLOBAL DATA TYPE: %s \n", data_type.c_str());
+            if(type == data_type){
+                tk = toks[offset++];
+                compareCounter = 0;
+                return node;
+            }else{
+                printf("ERROR: Conflicting data types. Line %d expects %s.\n",tk.pos,data_type.c_str());
+                exit(1);
+            }
+
+        }else{
+            printf("ERROR: Variable not declared in line %d. \n",tk.pos);
+            exit(1);
+        }
+        // tk = toks[offset++];
+        //     return node;
+        // if(type == data_type){
+        //     tk = toks[offset++];
+        //     return node;
+        // }else{
+        //     printf("ERROR: Conflicting data types. Line %d expects %s.\n",tk.pos,data_type.c_str());
+        //     exit(1);
+        // }
+        
+    }else if(tk.type==tokVAL){ 
+	node->token = toks[offset]; //attach VAL to syntax tree
+        tk = toks[offset++]; 
+        return node;
+    }else if(tk.type==tokLET){
+	node->token = toks[offset]; //attach LET to syntax tree
+        tk = toks[offset++]; 
+        return node;
+    }else{
+        printf("ERROR: Invalid expression. Line %d expects '(', an identifier or a value.\n",tk.pos);
+        exit(1);
+    }*/
+}
+
+Node* op2(){
+    Node *node = createNode(op2Node); 
+    if(tk.type==tokSUB){ //negation
+	node->token = toks[offset]; //attach NEG to syntax tree
+        tk = toks[offset++];
+        node->child1 = op2();
+        return node;
+    }else{
+     	node->child1 = op3();
+	return node;
+    }
+}
+
+Node* op1(){
+    Node *node = createNode(op1Node); 
+    node->child1 = op2(); 
+    if(tk.type==tokADD){ 
+	node->token = toks[offset]; //attach ADD to syntax tree
+        tk = toks[offset++];
+        node->child2 = op1();
+        return node;
+    }else if(tk.type==tokSUB){
+	node->token = toks[offset]; //attach SUB to syntax tree
+        tk = toks[offset++];
+        node->child2 = op1();
+        return node;
+    }else{ 
+        return node; //empty after op2
+    }
+}
+
+Node* expr(){
+    Node *node = createNode(exprNode); 
+    node->child1 = op1();
+    if(tk.type==tokMULT){
+        node->token = toks[offset]; //attach MULT to syntax tree
+        tk = toks[offset++];
+        node->child2 = expr();
+        return node;
+    }else if(tk.type==tokDIV){
+	node->token = toks[offset]; //attach DIV to syntax tree
+        tk = toks[offset++];
+        node->child2 = expr();
+        return node;
+    }else{
+        return node; //empty after op1
+    }
+}
+
+Node* stmtment(){
+    Node *node = createNode(stmtNode);
+    if(tk.type == tokNAME){
+	tk = toks[offset++];
+	if(isCompOp(tk.type)){
+	    tk = toks[offset++];
+    	}else if(isRelOp(tk.type)){
+	    tk = toks[offset++];
+	}else{
+	    printf("ERROR: Invalid where clause.");
+	    exit(1);
+	}
+    }else{
+	printf("ERROR: Invalid where clause.");
+	exit(1);
+    }
+    return node;
+}
+
 Node* wherecond(){
     Node *node = createNode(whereNode);
     if(tk.type == tokWHERE){
 	tk = toks[offset++];
+	node->child1 = stmtment();
     }
     return node;
 }
@@ -381,7 +540,7 @@ void parser(){
     Node *root = NULL;
     root = select();
 
-    if(tk.type=tokEND) //tk is global so tk will be the end node if parsing works fine
+    if(tk.type==tokEND) //tk is global so tk will be the end node if parsing works fine
 	    printf("Successful parsing!\n");
     else{
 	    exit(1);
