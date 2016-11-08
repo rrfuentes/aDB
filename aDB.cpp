@@ -10,7 +10,7 @@
 /*
 Authors: 
 	 
-Last Edited: Sept. 13, 2016
+Last Edited: Nov. 08, 2016
 
 */
 
@@ -225,9 +225,22 @@ Token anlzr(){
 		} i++;
 		continue;
  	    }
-	}else*/ if(code[i]=='"'){
+	}else*/ if(code[i]=='"'){ 
 	    idx=i+1; //do not include "
-	    while(i<code.size() || !(code[++i]=='"')){} //CONCAT print's text
+	    while(i<code.size() || code[++i]!='"'){} //CONCAT print's text
+	    temp=code.substr(idx,i-idx).c_str();
+	    strcpy(token.str, temp.c_str());
+	    token.pos = lineNum;
+	    token.type = tokTEXT; 
+	    if(i==code.size()){ 
+		printf("ERROR: Invalid syntax for string/character value in line %d.\n",lineNum);
+		token.type = tokEND;
+	    }
+	    offset = i+1;
+	    return token;
+	}else if(code[i]=='\''){
+	    idx=i+1; //do not include "
+	    while(i<code.size() || code[++i]!='\''){} //CONCAT print's text
 	    temp=code.substr(idx,i-idx).c_str();
 	    strcpy(token.str, temp.c_str());
 	    token.pos = lineNum;
@@ -238,21 +251,8 @@ Token anlzr(){
 	    }
 	    offset = i+1;
 	    return token;
-	}else if(code[i]=='\''){
-	    idx=i+1; //do not include "
-	    while(i<code.size() || !(code[++i]=='\'')){} //CONCAT print's text
-	    temp=code.substr(idx,i-idx).c_str();
-	    strcpy(token.str, temp.c_str());
-	    token.pos = lineNum;
-	    token.type = tokTEXT;
-	    if(i==code.size()){ 
-		printf("ERROR: Invalid syntax for string/character value in line %d.\n",lineNum);
-		token.type = tokEND;
-	    }
-	    offset = ++i;
-	    return token;
 	}
-
+        
         if(isalpha(code[i])){ //save keywords/attributes
 	    idx=i;
 	    while(isalnum(code[i]) || code[i]=='_'){code[i]=toupper(code[i++]);}
@@ -337,15 +337,16 @@ Node* createNode(NodeType type){
 
 Node* attr_more(){
     Node *node = createNode(attrNode);
-    if(tk.type==tokCOMMA){
-	tk = toks[offset++]; 
-	if(tk.type == tokNAME){
+    if(tk.type == tokNAME){
+	node->token = toks[offset]; //attach to syntax tree
+	tk = toks[offset++];
+	if(tk.type==tokCOMMA){
 	    tk = toks[offset++];
  	    node->child1 = attr_more(); //more attributes in the project operation		
-    	}else{
-	    printf("ERROR: Expecting another attribute name in line %d.\n",tk.pos);
-	    exit(1);
 	}
+    }else{
+	printf("ERROR: Expecting another attribute name in line %d.\n",tk.pos);
+	exit(1);
     }
     return node;
 }
@@ -353,8 +354,12 @@ Node* attr_more(){
 Node* attrib(){
     Node *node = createNode(attrNode);
     if(tk.type == tokNAME){
+	node->token = toks[offset]; //attach to syntax tree
 	tk = toks[offset++];
- 	node->child1 = attr_more();
+	if(tk.type==tokCOMMA){
+	    tk = toks[offset++]; 
+ 	    node->child1 = attr_more();
+	}
     }else if(tk.type == tokMULT){ //* or all attributes
 	tk = toks[offset++];
     }else{
@@ -364,27 +369,15 @@ Node* attrib(){
     return node;     
 }
 
-Node* tble_more(){
-    Node *node = createNode(tblNode);
-    if(tk.type==tokCOMMA){
- 	tk = toks[offset++]; 
-	if(tk.type == tokNAME){
-	    tk = toks[offset++];
- 	    node->child1 = tble_more(); //more tables		
-    	}else{
-	    printf("ERROR: Expecting another table name in line %d.\n",tk.pos);
-	    exit(1);
-	}
-    }
-    return node;
-
-}
-
 Node* tble(){
     Node *node = createNode(tblNode);
     if(tk.type == tokNAME){
+	node->token = toks[offset]; //attach to syntax tree
 	tk = toks[offset++];
-	node->child1 = tble_more(); //more tables	
+	if(tk.type==tokCOMMA){
+	    tk = toks[offset++];
+	    node->child1 = tble(); //more tables	
+	}
     }else{
 	printf("ERROR: Invalid table name/s in the statement. %s\n",tk.str);
 	exit(1);
@@ -407,9 +400,9 @@ Node* op3(){
             exit(1);
     	}
     }else if(tk.type==tokNAME){
-	    node->token = toks[offset]; //attach to syntax tree
-            tk = toks[offset++]; 
-            return node;
+	node->token = toks[offset]; //attach to syntax tree
+        tk = toks[offset++]; 
+        return node;
     }else if(tk.type==tokVAL){ 
 	node->token = toks[offset]; //attach VAL to syntax tree
         tk = toks[offset++]; 
@@ -472,12 +465,14 @@ Node* expr(){
 Node* stmtment(){
     Node *node = createNode(stmtNode);
     if(tk.type == tokNAME){
+	node->token = toks[offset]; //attach MULT to syntax tree
 	tk = toks[offset++];
 	if(isCompOp(tk.type)){
 	    tk = toks[offset++];
 	    node->child1 = expr();
     	}else if(isRelOp(tk.type)){
 	    tk = toks[offset++];
+	    //Add Function
 	}else{
 	    printf("ERROR: Invalid where clause.");
 	    exit(1);
@@ -521,17 +516,38 @@ Node* select_sql(){
     }
 }
 
-Node* tple_more(){
-    Node *node = createNode(attrNode);
-    if(tk.type==tokLPAR){ 
+Node* tplevalues(){
+    Node *node = createNode(tupleNode);
+    if(tk.type==tokVAL || tk.type==tokTEXT){
+	node->token = toks[offset]; //attach to syntax tree
 	tk = toks[offset++];
-	if(tk.type==tokRPAR){ 
+	if(tk.type==tokCOMMA){
 	    tk = toks[offset++];
-       	}else{
+	    node->child1 = tplevalues();
+	}
+    }else{
+	printf("ERROR: Invalid insert statement: missing values.\n");
+	exit(1);
+    } 
+    return node; 
+}
+
+Node* tple_more(){
+    Node *node = createNode(tupleNode);
+    node->child1 = tplevalues();
+    if(tk.type==tokRPAR){ 
+	    tk = toks[offset++];
+    }else{
 	    printf("ERROR: Invalid insert statement: no closing parenthesis.\n");
 	    exit(1);
-    	}
     }
+
+    if(tk.type==tokLPAR){ 
+	tk = toks[offset++];
+        node->child2 = tple_more();
+    }
+   
+    return node; 
 }
 
 Node* tple(){
@@ -542,14 +558,19 @@ Node* tple(){
 	printf("ERROR: Invalid insert statement: no tuple values.\n");
 	exit(1);
     }
-    //node->child1 = 
+    node->child1 = tplevalues();
+
     if(tk.type==tokRPAR){ 
 	tk = toks[offset++];
     }else{
 	printf("ERROR: Invalid insert statement: no closing parenthesis.\n");
 	exit(1);
     }
-    node->child2 = tple_more();
+
+    if(tk.type==tokLPAR){ 
+	tk = toks[offset++];
+        node->child2 = tple_more();
+    }
     return node; 
 }
 
@@ -562,8 +583,12 @@ Node* attrib2(){
     }
 
     if(tk.type == tokNAME){
+	node->token = toks[offset]; //attach to syntax tree
 	tk = toks[offset++];
- 	node->child1 = attr_more();
+	if(tk.type==tokCOMMA){
+	    tk = toks[offset++];
+ 	    node->child1 = attr_more();
+	}
     }else{
 	printf("ERROR: Invalid attribute name/s in the statement. %s\n",tk.str);
 	exit(1);
@@ -582,6 +607,7 @@ Node* attrib2(){
 Node* tble2(){
    Node *node = createNode(tblNode);
    if(tk.type==tokNAME){ 
+	node->token = toks[offset]; //attach to syntax tree
 	tk = toks[offset++];
    }else{
 	printf("ERROR: Invalid insert statement: no table name.\n");
@@ -600,12 +626,14 @@ Node* insert_sql(){
     }
     node->child1 = tble2();
     node->child2 = attrib2();
-    if(tk.type==tokVALUES){ 
+    if(tk.type==tokVALUES){ //check reserved token "VALUES"
 	tk = toks[offset++];
     }else{
        	printf("ERROR: Invalid insert statement: no VALUES keyword.\n");
 	exit(1);
     }
+
+    node->child3 = tple();
 
     if(tk.type==tokSEMICOL){ //end query
 	    tk = toks[offset++];
@@ -614,11 +642,14 @@ Node* insert_sql(){
 	    exit(1);
     }
     
-    node->child3 = tple();
     return node;
 }
 
 Node* delete_sql(){
+
+}
+
+void execute_insert(Node* root){
 
 }
 
@@ -632,6 +663,7 @@ void parser(){
     }else if(tk.type==tokINSERT){
     	tk = toks[offset++];
 	root = insert_sql();
+	execute_insert(root);
     }else if(tk.type==tokDELETE){
      	tk = toks[offset++];
 	root = delete_sql();
