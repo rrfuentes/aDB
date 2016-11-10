@@ -14,7 +14,7 @@ Last Edited: Nov. 10, 2016
 
 */
 
-#define MAXWORD 500 //maximum word size
+#define MAXWORD 50 //maximum word size
 
 using namespace std;
 
@@ -312,9 +312,9 @@ Node* attr_more(){
     Node *node = createNode(attrNode);
     if(tk.type == tokNAME){
 	node->token = toks[offset]; //attach to syntax tree
-	tk = toks[offset++];
+	tk = toks[++offset];
 	if(tk.type==tokCOMMA){
-	    tk = toks[offset++];
+	    tk = toks[++offset];
  	    node->child1 = attr_more(); //more attributes in the project operation		
 	}
     }else{
@@ -328,13 +328,13 @@ Node* attrib(){
     Node *node = createNode(attrNode);
     if(tk.type == tokNAME){
 	node->token = toks[offset]; //attach to syntax tree
-	tk = toks[offset++];
+	tk = toks[++offset];
 	if(tk.type==tokCOMMA){
-	    tk = toks[offset++]; 
+	    tk = toks[++offset]; 
  	    node->child1 = attr_more();
 	}
     }else if(tk.type == tokMULT){ //* or all attributes
-	tk = toks[offset++];
+	tk = toks[++offset];
     }else{
 	printf("ERROR: Invalid attribute name/s in the statement. %s\n",tk.str);
 	exit(1);
@@ -346,9 +346,9 @@ Node* tble(){
     Node *node = createNode(tblNode);
     if(tk.type == tokNAME){
 	node->token = toks[offset]; //attach to syntax tree
-	tk = toks[offset++];
+	tk = toks[++offset];
 	if(tk.type==tokCOMMA){
-	    tk = toks[offset++];
+	    tk = toks[++offset];
 	    node->child1 = tble(); //more tables	
 	}
     }else{
@@ -363,10 +363,10 @@ Node* op3(){
 
     if(tk.type==tokLPAR){ 
 	node->token = toks[offset]; //attach ( to syntax tree
-        tk = toks[offset++]; 
+        tk = toks[++offset]; 
         node->child1 = expr(); 
     	if(tk.type==tokRPAR){
-            tk = toks[offset++];
+            tk = toks[++offset];
             return node;
     	}else{
             printf("ERROR: Line %d expects ')'.\n",tk.pos);
@@ -374,11 +374,11 @@ Node* op3(){
     	}
     }else if(tk.type==tokNAME){
 	node->token = toks[offset]; //attach to syntax tree
-        tk = toks[offset++]; 
+        tk = toks[++offset]; 
         return node;
     }else if(tk.type==tokVAL){ 
 	node->token = toks[offset]; //attach VAL to syntax tree
-        tk = toks[offset++]; 
+        tk = toks[++offset]; 
         return node;
     }else{
         printf("ERROR: Invalid expression.\n",tk.pos);
@@ -390,7 +390,7 @@ Node* op2(){
     Node *node = createNode(op2Node); 
     if(tk.type==tokSUB){ //negation
 	node->token = toks[offset]; //attach NEG to syntax tree
-        tk = toks[offset++];
+        tk = toks[++offset];
         node->child1 = op2();
         return node;
     }else{
@@ -404,12 +404,12 @@ Node* op1(){
     node->child1 = op2(); 
     if(tk.type==tokADD){ 
 	node->token = toks[offset]; //attach ADD to syntax tree
-        tk = toks[offset++];
+        tk = toks[++offset];
         node->child2 = op1();
         return node;
     }else if(tk.type==tokSUB){
 	node->token = toks[offset]; //attach SUB to syntax tree
-        tk = toks[offset++];
+        tk = toks[++offset];
         node->child2 = op1();
         return node;
     }else{ 
@@ -422,12 +422,12 @@ Node* expr(){
     node->child1 = op1();
     if(tk.type==tokMULT){
         node->token = toks[offset]; //attach MULT to syntax tree
-        tk = toks[offset++];
+        tk = toks[++offset];
         node->child2 = expr();
         return node;
     }else if(tk.type==tokDIV){
 	node->token = toks[offset]; //attach DIV to syntax tree
-        tk = toks[offset++];
+        tk = toks[++offset];
         node->child2 = expr();
         return node;
     }else{
@@ -439,12 +439,12 @@ Node* stmtment(){
     Node *node = createNode(stmtNode);
     if(tk.type == tokNAME){
 	node->token = toks[offset]; //attach MULT to syntax tree
-	tk = toks[offset++];
+	tk = toks[++offset];
 	if(isCompOp(tk.type)){
-	    tk = toks[offset++];
+	    tk = toks[++offset];
 	    node->child1 = expr();
     	}else if(isRelOp(tk.type)){
-	    tk = toks[offset++];
+	    tk = toks[++offset];
 	    //Add Function
 	}else{
 	    printf("ERROR: Invalid where clause.");
@@ -460,7 +460,7 @@ Node* stmtment(){
 Node* wherecond(){
     Node *node = createNode(whereNode);
     if(tk.type == tokWHERE){
-	tk = toks[offset++];
+	tk = toks[++offset];
 	node->child1 = stmtment();
     }
     return node;
@@ -471,7 +471,7 @@ Node* select_sql(){
     node->child1 = attrib();
     
     if(tk.type==tokFROM){ 
-	   tk = toks[offset++];
+	   tk = toks[++offset];
     }else{
        	printf("ERROR: Invalid select statement. %s\n",tk.str);
 	exit(1);
@@ -481,7 +481,7 @@ Node* select_sql(){
     node->child3 = wherecond();
 
     if(tk.type==tokSEMICOL){ //end query
-	    tk = toks[offset++];
+	    tk = toks[++offset];
 	return node;
     }else{
    	    printf("ERROR: Invalid closing of the statement.\n");
@@ -493,9 +493,9 @@ Node* tplevalues(){
     Node *node = createNode(tupleNode);
     if(tk.type==tokVAL || tk.type==tokTEXT){
 	node->token = toks[offset]; //attach to syntax tree
-	tk = toks[offset++];
+	tk = toks[++offset];
 	if(tk.type==tokCOMMA){
-	    tk = toks[offset++];
+	    tk = toks[++offset];
 	    node->child1 = tplevalues();
 	}
     }else{
@@ -508,7 +508,7 @@ Node* tplevalues(){
 Node* tple(){
     Node *node = createNode(tupleNode);
     if(tk.type==tokLPAR){ 
-	tk = toks[offset++];
+	tk = toks[++offset];
     }else{
 	printf("ERROR: Invalid insert statement: expecting '(' after a comma.\n");
 	exit(1);
@@ -516,14 +516,14 @@ Node* tple(){
     node->child1 = tplevalues();
 
     if(tk.type==tokRPAR){ 
-	tk = toks[offset++];
+	tk = toks[++offset];
     }else{
 	printf("ERROR: Invalid insert statement: no closing parenthesis.\n");
 	exit(1);
     }
 
     if(tk.type==tokCOMMA){
-	tk = toks[offset++];
+	tk = toks[++offset];
 	node->child2 = tple();
     }
     
@@ -534,9 +534,9 @@ Node* attrib2(){
     Node *node = createNode(attrNode);
     if(tk.type == tokNAME){
 	node->token = toks[offset]; //attach to syntax tree
-	tk = toks[offset++];
+	tk = toks[++offset];
 	if(tk.type==tokCOMMA){
-	    tk = toks[offset++];
+	    tk = toks[++offset];
  	    node->child1 = attr_more();
 	}
     }else{
@@ -545,7 +545,7 @@ Node* attrib2(){
     }
 
     if(tk.type==tokRPAR){ 
-	tk = toks[offset++];
+	tk = toks[++offset];
     }else{
 	printf("ERROR: Invalid insert statement: no parenthesis after attribute name/s.\n");
 	exit(1);
@@ -558,7 +558,7 @@ Node* tble2(){
    Node *node = createNode(tblNode);
    if(tk.type==tokNAME){ 
 	node->token = toks[offset]; //attach to syntax tree
-	tk = toks[offset++];
+	tk = toks[++offset];
    }else{
 	printf("ERROR: Invalid insert statement: no table name.\n");
 	exit(1);
@@ -567,24 +567,25 @@ Node* tble2(){
 }
 
 Node* insert_sql(){
-    Node *node = createNode(insertNode);
+    Node *node = createNode(insertNode); 
     if(tk.type==tokINTO){ 
-	   tk = toks[offset++];
+	   tk = toks[++offset];
     }else{
        	printf("ERROR: Invalid insert statement: no INTO keyword.\n");
 	exit(1);
     }
+    
     node->child1 = tble2();
   
     if(tk.type==tokLPAR){ 
-	tk = toks[offset++];
+	tk = toks[++offset];
 	node->child2 = attrib2();
     }else{
 	return node; //attributes are not specified
     }
     
     if(tk.type==tokVALUES){ //check reserved token "VALUES"
-	tk = toks[offset++];
+	tk = toks[++offset];
     }else{
        	printf("ERROR: Invalid insert statement: no VALUES keyword.\n");
 	exit(1);
@@ -593,7 +594,7 @@ Node* insert_sql(){
     node->child3 = tple();
 
     if(tk.type==tokSEMICOL){ //end query
-	    tk = toks[offset++];
+	    tk = toks[++offset];
     }else{
    	    printf("ERROR: Invalid closing of the statement.\n");
 	    exit(1);
@@ -607,22 +608,25 @@ Node* delete_sql(){
 }
 
 void execute_insert(Node* root){
+    string tblname = root->child1->token.str;
+    //loadtree(tblname);
+     
 
 }
 
 void parser(){
-    tk = toks[offset++];
-    Node *root = NULL;
+    tk = toks[0];
+    Node *root = NULL; 
     //start query
     if(tk.type==tokSELECT){ 
-	tk = toks[offset++];
+	tk = toks[++offset];
 	root = select_sql();
     }else if(tk.type==tokINSERT){
-    	tk = toks[offset++];
+    	tk = toks[++offset];
 	root = insert_sql();
 	execute_insert(root);
     }else if(tk.type==tokDELETE){
-     	tk = toks[offset++];
+     	tk = toks[++offset];
 	root = delete_sql();
     }else{
 	printf("ERROR: Invalid start of the statement. %s\n",tk.str);
