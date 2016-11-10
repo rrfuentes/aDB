@@ -10,7 +10,7 @@
 /*
 Authors: 
 	 
-Last Edited: Nov. 08, 2016
+Last Edited: Nov. 10, 2016
 
 */
 
@@ -206,49 +206,22 @@ Token anlzr(){
 	    continue; 
 	}
 
-     	/*if(code[i]=='-'){
-	    if(code[i+1]=='-'){ //1-line comment
-		while(code[i]!='\n'){i++;}
-		lineNum++; 
-		continue;
-	    }
-	}else if(code[i]=='<'){
-	    if(code[i+1]=='!'){ //multi-line comment
-		int lineidx=lineNum;
-		while(!(code[i]=='!' && code[i+1]=='>')){
-		    if(code[i]=='\n') lineNum++;
-		    i++;
-		    if(i==code.size()){ 
-			printf("ERROR: The multi-line comment in line %d is not properly ended.\n",lineidx);
-			exit(1);
-		    }
-		} i++;
-		continue;
- 	    }
-	}else*/ if(code[i]=='"'){ 
+     	if(code[i]=='"'){ 
 	    idx=i+1; //do not include "
-	    while(i<code.size() || code[++i]!='"'){} //CONCAT print's text
+	    while(i<code.size() && code[++i]!='"'){} //CONCAT print's text
 	    temp=code.substr(idx,i-idx).c_str();
 	    strcpy(token.str, temp.c_str());
 	    token.pos = lineNum;
 	    token.type = tokTEXT; 
-	    if(i==code.size()){ 
-		printf("ERROR: Invalid syntax for string/character value in line %d.\n",lineNum);
-		token.type = tokEND;
-	    }
 	    offset = i+1;
 	    return token;
 	}else if(code[i]=='\''){
 	    idx=i+1; //do not include "
-	    while(i<code.size() || code[++i]!='\''){} //CONCAT print's text
+	    while(i<code.size() && code[++i]!='\''){} //CONCAT print's text
 	    temp=code.substr(idx,i-idx).c_str();
 	    strcpy(token.str, temp.c_str());
 	    token.pos = lineNum;
 	    token.type = tokTEXT;
-	    if(i==code.size()){ 
-		printf("ERROR: Invalid syntax for string/character value in line %d.\n",lineNum);
-		token.type = tokEND;
-	    }
 	    offset = i+1;
 	    return token;
 	}
@@ -532,30 +505,12 @@ Node* tplevalues(){
     return node; 
 }
 
-Node* tple_more(){
-    Node *node = createNode(tupleNode);
-    node->child1 = tplevalues();
-    if(tk.type==tokRPAR){ 
-	    tk = toks[offset++];
-    }else{
-	    printf("ERROR: Invalid insert statement: no closing parenthesis.\n");
-	    exit(1);
-    }
-
-    if(tk.type==tokLPAR){ 
-	tk = toks[offset++];
-        node->child2 = tple_more();
-    }
-   
-    return node; 
-}
-
 Node* tple(){
     Node *node = createNode(tupleNode);
     if(tk.type==tokLPAR){ 
 	tk = toks[offset++];
     }else{
-	printf("ERROR: Invalid insert statement: no tuple values.\n");
+	printf("ERROR: Invalid insert statement: expecting '(' after a comma.\n");
 	exit(1);
     }
     node->child1 = tplevalues();
@@ -567,21 +522,16 @@ Node* tple(){
 	exit(1);
     }
 
-    if(tk.type==tokLPAR){ 
+    if(tk.type==tokCOMMA){
 	tk = toks[offset++];
-        node->child2 = tple_more();
+	node->child2 = tple();
     }
+    
     return node; 
 }
 
 Node* attrib2(){
     Node *node = createNode(attrNode);
-    if(tk.type==tokLPAR){ 
-	tk = toks[offset++];
-    }else{
-	return node; //attributes are not specified
-    }
-
     if(tk.type == tokNAME){
 	node->token = toks[offset]; //attach to syntax tree
 	tk = toks[offset++];
@@ -625,7 +575,14 @@ Node* insert_sql(){
 	exit(1);
     }
     node->child1 = tble2();
-    node->child2 = attrib2();
+  
+    if(tk.type==tokLPAR){ 
+	tk = toks[offset++];
+	node->child2 = attrib2();
+    }else{
+	return node; //attributes are not specified
+    }
+    
     if(tk.type==tokVALUES){ //check reserved token "VALUES"
 	tk = toks[offset++];
     }else{
