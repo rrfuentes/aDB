@@ -48,7 +48,7 @@ typedef struct nodeTag{
     struct nodeTag *child1;
     struct nodeTag *child2;
     struct nodeTag *child3;
-}Node;
+}PNode;
 
 char arithOperator[]={'*','/','+','-'};
 char delimeter[]={'(',')',',','"','=',';'};
@@ -58,11 +58,11 @@ int offset=0,lineNum=0,tokcount=0;
 Token *toks=NULL;
 Token tk = {"N/A",NAtk,0};
 
-Node* op1();
-Node* op2();
-Node* op3();
-Node* loop();
-Node* expr();
+PNode* op1();
+PNode* op2();
+PNode* op3();
+PNode* loop();
+PNode* expr();
 
 void make_tokenmap(){
     reservedWord["SELECT"]=tokSELECT;
@@ -300,38 +300,38 @@ Token anlzr(){
     return token;
 }
 
-Node* createNode(NodeType type){
-    Node *node = (Node*) malloc(sizeof(Node));
-    node->type = type;
-    //node->token;
-    node->child1 =node->child2 =node->child3 =NULL;
-    return node;
+PNode* createNode(NodeType type){
+    PNode *ptreenode = (PNode*) malloc(sizeof(PNode));
+    ptreenode->type = type;
+    //ptreenode->token;
+    ptreenode->child1 =ptreenode->child2 =ptreenode->child3 =NULL;
+    return ptreenode;
 }
 
-Node* attr_more(){
-    Node *node = createNode(attrNode);
+PNode* attr_more(){
+    PNode *ptreenode = createNode(attrNode);
     if(tk.type == tokNAME){
-	node->token = toks[offset]; //attach to syntax tree
+	ptreenode->token = toks[offset]; //attach to syntax tree
 	tk = toks[++offset];
 	if(tk.type==tokCOMMA){
 	    tk = toks[++offset];
- 	    node->child1 = attr_more(); //more attributes in the project operation		
+ 	    ptreenode->child1 = attr_more(); //more attributes in the project operation		
 	}
     }else{
 	printf("ERROR: Expecting another attribute name in line %d.\n",tk.pos);
 	exit(1);
     }
-    return node;
+    return ptreenode;
 }
 
-Node* attrib(){
-    Node *node = createNode(attrNode);
+PNode* attrib(){
+    PNode *ptreenode = createNode(attrNode);
     if(tk.type == tokNAME){
-	node->token = toks[offset]; //attach to syntax tree
+	ptreenode->token = toks[offset]; //attach to syntax tree
 	tk = toks[++offset];
 	if(tk.type==tokCOMMA){
 	    tk = toks[++offset]; 
- 	    node->child1 = attr_more();
+ 	    ptreenode->child1 = attr_more();
 	}
     }else if(tk.type == tokMULT){ //* or all attributes
 	tk = toks[++offset];
@@ -339,110 +339,110 @@ Node* attrib(){
 	printf("ERROR: Invalid attribute name/s in the statement. %s\n",tk.str);
 	exit(1);
     }
-    return node;     
+    return ptreenode;     
 }
 
-Node* tble(){
-    Node *node = createNode(tblNode);
+PNode* tble(){
+    PNode *ptreenode = createNode(tblNode);
     if(tk.type == tokNAME){
-	node->token = toks[offset]; //attach to syntax tree
+	ptreenode->token = toks[offset]; //attach to syntax tree
 	tk = toks[++offset];
 	if(tk.type==tokCOMMA){
 	    tk = toks[++offset];
-	    node->child1 = tble(); //more tables	
+	    ptreenode->child1 = tble(); //more tables	
 	}
     }else{
 	printf("ERROR: Invalid table name/s in the statement. %s\n",tk.str);
 	exit(1);
     }
-    return node;
+    return ptreenode;
 }
 
-Node* op3(){
-    Node *node = createNode(op3Node);
+PNode* op3(){
+    PNode *ptreenode = createNode(op3Node);
 
     if(tk.type==tokLPAR){ 
-	node->token = toks[offset]; //attach ( to syntax tree
+	ptreenode->token = toks[offset]; //attach ( to syntax tree
         tk = toks[++offset]; 
-        node->child1 = expr(); 
+        ptreenode->child1 = expr(); 
     	if(tk.type==tokRPAR){
             tk = toks[++offset];
-            return node;
+            return ptreenode;
     	}else{
             printf("ERROR: Line %d expects ')'.\n",tk.pos);
             exit(1);
     	}
     }else if(tk.type==tokNAME){
-	node->token = toks[offset]; //attach to syntax tree
+	ptreenode->token = toks[offset]; //attach to syntax tree
         tk = toks[++offset]; 
-        return node;
+        return ptreenode;
     }else if(tk.type==tokVAL){ 
-	node->token = toks[offset]; //attach VAL to syntax tree
+	ptreenode->token = toks[offset]; //attach VAL to syntax tree
         tk = toks[++offset]; 
-        return node;
+        return ptreenode;
     }else{
         printf("ERROR: Invalid expression.\n",tk.pos);
         exit(1);
     }
 }
 
-Node* op2(){
-    Node *node = createNode(op2Node); 
+PNode* op2(){
+    PNode *ptreenode = createNode(op2Node); 
     if(tk.type==tokSUB){ //negation
-	node->token = toks[offset]; //attach NEG to syntax tree
+	ptreenode->token = toks[offset]; //attach NEG to syntax tree
         tk = toks[++offset];
-        node->child1 = op2();
-        return node;
+        ptreenode->child1 = op2();
+        return ptreenode;
     }else{
-     	node->child1 = op3();
-	return node;
+     	ptreenode->child1 = op3();
+	return ptreenode;
     }
 }
 
-Node* op1(){
-    Node *node = createNode(op1Node); 
-    node->child1 = op2(); 
+PNode* op1(){
+    PNode *ptreenode = createNode(op1Node); 
+    ptreenode->child1 = op2(); 
     if(tk.type==tokADD){ 
-	node->token = toks[offset]; //attach ADD to syntax tree
+	ptreenode->token = toks[offset]; //attach ADD to syntax tree
         tk = toks[++offset];
-        node->child2 = op1();
-        return node;
+        ptreenode->child2 = op1();
+        return ptreenode;
     }else if(tk.type==tokSUB){
-	node->token = toks[offset]; //attach SUB to syntax tree
+	ptreenode->token = toks[offset]; //attach SUB to syntax tree
         tk = toks[++offset];
-        node->child2 = op1();
-        return node;
+        ptreenode->child2 = op1();
+        return ptreenode;
     }else{ 
-        return node; //empty after op2
+        return ptreenode; //empty after op2
     }
 }
 
-Node* expr(){
-    Node *node = createNode(exprNode); 
-    node->child1 = op1();
+PNode* expr(){
+    PNode *ptreenode = createNode(exprNode); 
+    ptreenode->child1 = op1();
     if(tk.type==tokMULT){
-        node->token = toks[offset]; //attach MULT to syntax tree
+        ptreenode->token = toks[offset]; //attach MULT to syntax tree
         tk = toks[++offset];
-        node->child2 = expr();
-        return node;
+        ptreenode->child2 = expr();
+        return ptreenode;
     }else if(tk.type==tokDIV){
-	node->token = toks[offset]; //attach DIV to syntax tree
+	ptreenode->token = toks[offset]; //attach DIV to syntax tree
         tk = toks[++offset];
-        node->child2 = expr();
-        return node;
+        ptreenode->child2 = expr();
+        return ptreenode;
     }else{
-        return node; //empty after op1
+        return ptreenode; //empty after op1
     }
 }
 
-Node* stmtment(){
-    Node *node = createNode(stmtNode);
+PNode* stmtment(){
+    PNode *ptreenode = createNode(stmtNode);
     if(tk.type == tokNAME){
-	node->token = toks[offset]; //attach MULT to syntax tree
+	ptreenode->token = toks[offset]; //attach MULT to syntax tree
 	tk = toks[++offset];
 	if(isCompOp(tk.type)){
 	    tk = toks[++offset];
-	    node->child1 = expr();
+	    ptreenode->child1 = expr();
     	}else if(isRelOp(tk.type)){
 	    tk = toks[++offset];
 	    //Add Function
@@ -454,21 +454,21 @@ Node* stmtment(){
 	printf("ERROR: Invalid where clause.");
 	exit(1);
     }
-    return node;
+    return ptreenode;
 }
 
-Node* wherecond(){
-    Node *node = createNode(whereNode);
+PNode* wherecond(){
+    PNode *ptreenode = createNode(whereNode);
     if(tk.type == tokWHERE){
 	tk = toks[++offset];
-	node->child1 = stmtment();
+	ptreenode->child1 = stmtment();
     }
-    return node;
+    return ptreenode;
 }
 
-Node* select_sql(){
-    Node *node = createNode(selectNode);
-    node->child1 = attrib();
+PNode* select_sql(){
+    PNode *ptreenode = createNode(selectNode);
+    ptreenode->child1 = attrib();
     
     if(tk.type==tokFROM){ 
 	   tk = toks[++offset];
@@ -477,43 +477,43 @@ Node* select_sql(){
 	exit(1);
     }
 
-    node->child2 = tble();
-    node->child3 = wherecond();
+    ptreenode->child2 = tble();
+    ptreenode->child3 = wherecond();
 
     if(tk.type==tokSEMICOL){ //end query
 	    tk = toks[++offset];
-	return node;
+	return ptreenode;
     }else{
    	    printf("ERROR: Invalid closing of the statement.\n");
 	    exit(1);
     }
 }
 
-Node* tplevalues(){
-    Node *node = createNode(tupleNode);
+PNode* tplevalues(){
+    PNode *ptreenode = createNode(tupleNode);
     if(tk.type==tokVAL || tk.type==tokTEXT){
-	node->token = toks[offset]; //attach to syntax tree
+	ptreenode->token = toks[offset]; //attach to syntax tree
 	tk = toks[++offset];
 	if(tk.type==tokCOMMA){
 	    tk = toks[++offset];
-	    node->child1 = tplevalues();
+	    ptreenode->child1 = tplevalues();
 	}
     }else{
 	printf("ERROR: Invalid insert statement: missing values.\n");
 	exit(1);
     } 
-    return node; 
+    return ptreenode; 
 }
 
-Node* tple(){
-    Node *node = createNode(tupleNode);
+PNode* tple(){
+    PNode *ptreenode = createNode(tupleNode);
     if(tk.type==tokLPAR){ 
 	tk = toks[++offset];
     }else{
 	printf("ERROR: Invalid insert statement: expecting '(' after a comma.\n");
 	exit(1);
     }
-    node->child1 = tplevalues();
+    ptreenode->child1 = tplevalues();
 
     if(tk.type==tokRPAR){ 
 	tk = toks[++offset];
@@ -524,20 +524,20 @@ Node* tple(){
 
     if(tk.type==tokCOMMA){
 	tk = toks[++offset];
-	node->child2 = tple();
+	ptreenode->child2 = tple();
     }
     
-    return node; 
+    return ptreenode; 
 }
 
-Node* attrib2(){
-    Node *node = createNode(attrNode);
+PNode* attrib2(){
+    PNode *ptreenode = createNode(attrNode);
     if(tk.type == tokNAME){
-	node->token = toks[offset]; //attach to syntax tree
+	ptreenode->token = toks[offset]; //attach to syntax tree
 	tk = toks[++offset];
 	if(tk.type==tokCOMMA){
 	    tk = toks[++offset];
- 	    node->child1 = attr_more();
+ 	    ptreenode->child1 = attr_more();
 	}
     }else{
 	printf("ERROR: Invalid attribute name/s in the statement. %s\n",tk.str);
@@ -550,24 +550,24 @@ Node* attrib2(){
 	printf("ERROR: Invalid insert statement: no parenthesis after attribute name/s.\n");
 	exit(1);
     }
-    return node;  
+    return ptreenode;  
 
 }
 
-Node* tble2(){
-   Node *node = createNode(tblNode);
+PNode* tble2(){
+   PNode *ptreenode = createNode(tblNode);
    if(tk.type==tokNAME){ 
-	node->token = toks[offset]; //attach to syntax tree
+	ptreenode->token = toks[offset]; //attach to syntax tree
 	tk = toks[++offset];
    }else{
 	printf("ERROR: Invalid insert statement: no table name.\n");
 	exit(1);
    }
-   return node;
+   return ptreenode;
 }
 
-Node* insert_sql(){
-    Node *node = createNode(insertNode); 
+PNode* insert_sql(){
+    PNode *ptreenode = createNode(insertNode); 
     if(tk.type==tokINTO){ 
 	   tk = toks[++offset];
     }else{
@@ -575,13 +575,13 @@ Node* insert_sql(){
 	exit(1);
     }
     
-    node->child1 = tble2();
+    ptreenode->child1 = tble2();
   
     if(tk.type==tokLPAR){ 
 	tk = toks[++offset];
-	node->child2 = attrib2();
+	ptreenode->child2 = attrib2();
     }else{
-	return node; //attributes are not specified
+	return ptreenode; //attributes are not specified
     }
     
     if(tk.type==tokVALUES){ //check reserved token "VALUES"
@@ -591,7 +591,7 @@ Node* insert_sql(){
 	exit(1);
     }
 
-    node->child3 = tple();
+    ptreenode->child3 = tple();
 
     if(tk.type==tokSEMICOL){ //end query
 	    tk = toks[++offset];
@@ -600,14 +600,14 @@ Node* insert_sql(){
 	    exit(1);
     }
     
-    return node;
+    return ptreenode;
 }
 
-Node* delete_sql(){
+PNode* delete_sql(){
 
 }
 
-void execute_insert(Node* root){
+void execute_insert(PNode* root){
     string tblname = root->child1->token.str;
     //loadtree(tblname);
      
@@ -616,7 +616,7 @@ void execute_insert(Node* root){
 
 void parser(){
     tk = toks[0];
-    Node *root = NULL; 
+    PNode *root = NULL; 
     //start query
     if(tk.type==tokSELECT){ 
 	tk = toks[++offset];
