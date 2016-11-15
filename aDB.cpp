@@ -6,6 +6,7 @@
 #include <vector>
 #include <map>
 #include <iostream>
+#include <b+tree.h>
 
 /*
 Authors: 
@@ -607,11 +608,43 @@ PNode* delete_sql(){
 
 }
 
+BNode* traverse_inserttree(BNode *btreeroot, PNode *root){
+    PNode *tmp = root;
+    int x=0;
+    unsigned long hashval;
+    vector<string> values;
+    while(tmp->child1!=NULL){
+	values.push_back(tmp->child1->token.str);
+	if(x==0){
+	    hashval = hashkey((unsigned char*)tmp->child1->token.str);
+	    //printf("%lu\t",hashval);
+	    btreeroot = insert(btreeroot,hashval,tmp->child1->token.str);
+	    print_tree(btreeroot);
+	}
+	//printf("%s\n",values[x++].c_str());
+	tmp = tmp->child1;  //visit branches or other tuple values
+    }
+  
+    if(root->child2!=NULL){
+	btreeroot = traverse_inserttree(btreeroot,root->child2); //visit next tuple
+    }
+    return btreeroot;
+}
+
+
 void execute_insert(PNode* root){
+    BNode* btreeroot = NULL;
+    vector<string> attrib;
     string tblname = root->child1->token.str;
     //loadtree(tblname);
-     
-
+    if(root->child2!=NULL){
+	//get attrs
+    }
+    char instruction;
+    unsigned long key = 14115941475790296603;
+    btreeroot = traverse_inserttree(btreeroot,root->child3);
+    //find_and_print(btreeroot, key, instruction == 'p');
+    
 }
 
 void parser(){
@@ -651,25 +684,30 @@ int main(){
 
     make_tokenmap();
 
-    for(int i=0;getline(fp1,linestream);i++){
+    printf("> ");
+    for(int i=0;getline(cin,linestream);i++){
 	if(scan_query(linestream,lineNum)){
 	    printf("Cannot run the program. \n");	    
 	}
 	code += linestream + "\n";
-    }
 
-    toks = (Token*) malloc(tokcount*sizeof(Token));
-    lineNum=1;
+	toks = (Token*) malloc(tokcount*sizeof(Token));
+        lineNum=1;
     
-    //GET tokens
-    do{
-	    tokcount++;
-	    toks = (Token*)realloc(toks,tokcount*sizeof(Token)); 
-	    toks[tokcount-1]= anlzr(); 
-	    printf("%s\t%d\n",toks[tokcount-1].str, toks[tokcount-1].type);
-    }while(toks[tokcount-1].type != tokEND);
+	if(linestream[linestream.length()-1]==';'){
+            //GET tokens
+            do{
+	    	tokcount++;
+	    	toks = (Token*)realloc(toks,tokcount*sizeof(Token)); 
+	    	toks[tokcount-1]= anlzr(); 
+	    	//printf("%s\t%d\n",toks[tokcount-1].str, toks[tokcount-1].type);
+    	    }while(toks[tokcount-1].type != tokEND);
 
-    offset=0;
-    lineNum=0;
-    parser();
+    	    offset=0;
+    	    lineNum=0;
+    	    parser();
+	}
+	printf("> ");
+    }
+   
 }
