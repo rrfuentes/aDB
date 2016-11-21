@@ -9,9 +9,9 @@
 #include <b+tree.h>
 
 /*
-Authors: 
+Authors: Roven Rommel Fuentes
 	 
-Last Edited: Nov. 10, 2016
+Last Edited: Nov. 15, 2016
 
 */
 
@@ -21,7 +21,7 @@ using namespace std;
 
 typedef enum{
     tokSELECT,tokFROM,tokWHERE,tokIS,tokNOT,tokBETWEEN,tokAND,tokINSERT,
-    tokINTO,tokVALUES,tokDELETE, //reserved words
+    tokINTO,tokVALUES,tokDELETE,tokBULK,tokWITH, //reserved words
     tokADD,tokSUB,tokMULT,tokDIV, //arithmetic operators
     tokGRTR,tokLESS,tokEQL,tokGEQ,tokLEQ,tokNOTEQ, //comparison operators
     tokLPAR,tokRPAR,tokCOMMA,tokQUOTE, //delimeter
@@ -59,11 +59,41 @@ int offset=0,lineNum=0,tokcount=0;
 Token *toks=NULL;
 Token tk = {"N/A",NAtk,0};
 
-PNode* op1();
-PNode* op2();
+void make_tokenmap();
+int isReservedChar(char c);
+int isDelimeter(char c);
+TokenType getDelimeterType(char c);
+int isArithOperator(char c);
+int isArithmeticOperator(string c);
+int isCompOperator(char c);
+int isComparisonOperator(string c);
+TokenType getArithType(char c);
+TokenType getCompOpType(string c);
+int isStmt(TokenType type);
+int isCompOp(TokenType type);
+int isRelOp(TokenType type);
+int scan_query(string linestream,int &lineNum);
+Token anlzr();
+PNode* createNode(NodeType type);
+PNode* attr_more();
+PNode* attrib();
+PNode* tble();
 PNode* op3();
-PNode* loop();
+PNode* op2();
+PNode* op1();
 PNode* expr();
+PNode* stmtment();
+PNode* wherecond();
+PNode* select_sql();
+PNode* tplevalues();
+PNode* tple();
+PNode* attrib2();
+PNode* tble2();
+PNode* insert_sql();
+BNode* traverse_inserttree(BNode *btreeroot, PNode *root);
+void execute_insert(PNode* root);
+void parser();
+
 
 void make_tokenmap(){
     reservedWord["SELECT"]=tokSELECT;
@@ -77,6 +107,8 @@ void make_tokenmap(){
     reservedWord["INTO"]=tokINTO;
     reservedWord["VALUES"]=tokVALUES;
     reservedWord["DELETE"]=tokDELETE;
+    reservedWord["BULK"]=tokBULK;
+    reservedWord["WITH"]=tokWITH;
 
 }
 
@@ -545,12 +577,6 @@ PNode* attrib2(){
 	exit(1);
     }
 
-    if(tk.type==tokRPAR){ 
-	tk = toks[++offset];
-    }else{
-	printf("ERROR: Invalid insert statement: no parenthesis after attribute name/s.\n");
-	exit(1);
-    }
     return ptreenode;  
 
 }
@@ -585,6 +611,13 @@ PNode* insert_sql(){
 	return ptreenode; //attributes are not specified
     }
     
+    if(tk.type==tokRPAR){ 
+	tk = toks[++offset];
+    }else{
+	printf("ERROR: Invalid insert statement: no parenthesis after attribute name/s.\n");
+	exit(1);
+    }
+
     if(tk.type==tokVALUES){ //check reserved token "VALUES"
 	tk = toks[++offset];
     }else{
@@ -604,9 +637,53 @@ PNode* insert_sql(){
     return ptreenode;
 }
 
+PNode* bulk_insert(){
+    PNode *ptreenode = createNode(insertNode); 
+    if(tk.type==tokINSERT){ 
+	   tk = toks[++offset];
+    }else{
+       	printf("ERROR: Invalid bulk insert statement: syntax error.\n");
+	exit(1);
+    }
+
+    ptreenode->child1 = tble2();
+
+    if(tk.type==tokVAL){ //check for input file
+	ptreenode->token = toks[offset]; //attach VAL to syntax tree
+        tk = toks[++offset]; 
+    }else{
+       	printf("ERROR: Invalid bulk insert statement: input file error.\n");
+	exit(1);
+    }
+
+    if(tk.type==tokWITH){ //check for input file
+        tk = toks[++offset]; 
+    }else{
+       	printf("ERROR: Invalid bulk insert statement: syntax error.\n");
+	exit(1);
+    }
+
+    if(tk.type==tokLPAR){ 
+	tk = toks[++offset];
+	//ptreenode->child2 = 
+    }else{
+	return ptreenode; //attributes are not specified
+    }
+
+    if(tk.type==tokRPAR){ 
+	tk = toks[++offset];
+    }else{
+	printf("ERROR: Invalid bulk insert statement: missing parenthesis.\n");
+	exit(1);
+    }
+
+    return ptreenode;
+}
+
 PNode* delete_sql(){
 
 }
+
 
 BNode* traverse_inserttree(BNode *btreeroot, PNode *root){
     PNode *tmp = root;
@@ -615,22 +692,19 @@ BNode* traverse_inserttree(BNode *btreeroot, PNode *root){
     vector<string> values;
     while(tmp->child1!=NULL){
 	values.push_back(tmp->child1->token.str);
-	if(x==0){
-	    hashval = hashkey((unsigned char*)tmp->child1->token.str);
-	    //printf("%lu\t",hashval);
-	    btreeroot = insert(btreeroot,hashval,tmp->child1->token.str);
-	    print_tree(btreeroot);
-	}
 	//printf("%s\n",values[x++].c_str());
 	tmp = tmp->child1;  //visit branches or other tuple values
     }
+    hashval = hashkey((unsigned char*)root->child1->token.str); //hash value for primary key
+    //printf("%lu\t",hashval);
+    btreeroot = insert(btreeroot,hashval,values);
+    print_tree(btreeroot);
   
     if(root->child2!=NULL){
 	btreeroot = traverse_inserttree(btreeroot,root->child2); //visit next tuple
     }
     return btreeroot;
 }
-
 
 void execute_insert(PNode* root){
     BNode* btreeroot = NULL;
@@ -661,6 +735,9 @@ void parser(){
     }else if(tk.type==tokDELETE){
      	tk = toks[++offset];
 	root = delete_sql();
+    }else if(tk.type==tokBULK){
+	tk = toks[++offset];
+	root = bulk_insert();
     }else{
 	printf("ERROR: Invalid start of the statement. %s\n",tk.str);
 	exit(1);
