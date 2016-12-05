@@ -2,7 +2,7 @@
  *  bpt.c  
  *  This is a modified version to suit the project for CMSC 227 at the University
  *  of the Philippines.
- *  Last Modified: Nov. 13, 2016
+ *  Last Modified: Dec. 5, 2016
  *  Modified by: Roven Rommel B. Fuentes
  */
 #define Version "1.14"
@@ -62,6 +62,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <vector>
 #ifdef WINDOWS
 #define bool char
 #define false 0
@@ -71,6 +72,8 @@
 
 // Default order is 4.
 #define DEFAULT_ORDER 4
+#define MAXWORD 50 //maximum word size
+#define T1_STRFIELD 5 //number of char array fields in table1
 
 // Minimum order is necessarily 3.  We set the maximum
 // order arbitrarily.  You may change the maximum order.
@@ -86,6 +89,8 @@
 #define LICENSE_CONDITIONS_START 70
 #define LICENSE_CONDITIONS_END 625
 
+using namespace std;
+
 // TYPES.
 
 /* Type representing the record
@@ -99,12 +104,14 @@
  * of the value field.
  */
 typedef struct record {
-	char *value;
+	char** strval;
+        int** intval;
+	/*char *value;
 	char *studname;
 	char *birthday;
 	char *degree;
 	char *major;
-	int unitsearned;
+	int unitsearned;*/
 } record;
 
 /* Type representing a node in the B+ tree.
@@ -199,7 +206,7 @@ int cut( int length );
 
 // Insertion.
 
-record * make_record(char* value);
+record * make_record(vector<string> values);
 BNode * make_node( void );
 BNode * make_leaf( void );
 int get_left_index(BNode * parent, BNode * left);
@@ -214,7 +221,7 @@ BNode * insert_into_node_after_splitting(BNode * root, BNode * parent,
 BNode * insert_into_parent(BNode * root, BNode * left, unsigned long key, BNode * right);
 BNode * insert_into_new_root(BNode * left, unsigned long key, BNode * right);
 BNode * start_new_tree(unsigned long key, record * pointer);
-BNode * insert( BNode * root, unsigned long key, char * value );
+BNode * insert( BNode * root, unsigned long key, vector<string> values );
 
 // Deletion.
 
@@ -230,7 +237,7 @@ BNode * delete_data( BNode * root, unsigned long key );
 
 //Added Functions
 
-unsigned long hash(unsigned char *str);
+unsigned long hashkey(unsigned char *str);
 
 
 // FUNCTION DEFINITIONS.
@@ -484,7 +491,7 @@ void find_and_print(BNode * root, unsigned long key, bool verbose) {
 		printf("Record not found under key %lu.\n", key);
 	else 
 		printf("Record at %lx -- key %lu, value %s.\n",
-				(unsigned long)r, key, r->value);
+				(unsigned long)r, key, r->strval[0]);
 }
 
 
@@ -507,7 +514,7 @@ void find_and_print_range( BNode * root, int key_start, int key_end,
 					returned_keys[i],
 					(unsigned long)returned_pointers[i],
 					((record *)
-					 returned_pointers[i])->value);
+					 returned_pointers[i])->strval[0]);
 	}
 }
 
@@ -608,15 +615,18 @@ int cut( int length ) {
 /* Creates a new record to hold the value
  * to which a key refers.
  */
-record * make_record(char *value) {
+record * make_record(vector<string> values) {
 	record * new_record = (record *)malloc(sizeof(record));
 	if (new_record == NULL) {
 		perror("Record creation.");
 		exit(EXIT_FAILURE);
 	}
 	else {
-		new_record->value = (char*)malloc(sizeof(char)*10);
-		strcpy(new_record->value,value);
+		new_record->strval = (char**)malloc(sizeof(char*)*T1_STRFIELD);
+		for(int i=0;i<T1_STRFIELD;i++){
+		    new_record->strval[i] = (char*)malloc(sizeof(char)*MAXWORD);
+		    strcpy(new_record->strval[i], values[i].c_str());
+		}
 	}
 	return new_record;
 }
@@ -952,7 +962,7 @@ BNode * start_new_tree(unsigned long key, record * pointer) {
  * however necessary to maintain the B+ tree
  * properties.
  */
-BNode * insert( BNode * root, unsigned long key, char* value ) {
+BNode * insert( BNode * root, unsigned long key, vector<string> values ) {
 
 	record * pointer;
 	BNode * leaf;
@@ -967,7 +977,7 @@ BNode * insert( BNode * root, unsigned long key, char* value ) {
 	/* Create a new record for the
 	 * value.
 	 */
-	pointer = make_record(value);
+	pointer = make_record(values);
 
 
 	/* Case: the tree does not exist yet.
@@ -1383,7 +1393,7 @@ BNode * destroy_tree(BNode * root) {
 	return NULL;
 }
 
-unsigned long hash( unsigned char *str){
+unsigned long hashkey( unsigned char *str){
 	/* Source: http://www.cse.yorku.ca/~oz/hash.html */
 	unsigned long hash = 5381;
 	int c;
