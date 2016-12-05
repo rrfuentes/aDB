@@ -7,11 +7,12 @@
 #include <map>
 #include <iostream>
 #include <b+tree.h>
+#include <getopt.h>
 
 /*
 Authors: Roven Rommel Fuentes
 	 
-Last Edited: Nov. 15, 2016
+Last Edited: Dec. 5, 2016
 
 */
 
@@ -21,14 +22,14 @@ using namespace std;
 
 typedef enum{
     tokSELECT,tokFROM,tokWHERE,tokIS,tokNOT,tokBETWEEN,tokAND,tokINSERT,
-    tokINTO,tokVALUES,tokDELETE,tokBULK,tokWITH, //reserved words
+    tokINTO,tokVALUES,tokDELETE,tokBULK,tokWITH,tokFTERMNTR,tokCOMMIT, //reserved words
     tokADD,tokSUB,tokMULT,tokDIV, //arithmetic operators
     tokGRTR,tokLESS,tokEQL,tokGEQ,tokLEQ,tokNOTEQ, //comparison operators
     tokLPAR,tokRPAR,tokCOMMA,tokQUOTE, //delimeter
     tokNAME,
     NAtk,
     tokEND,tokTEXT,tokLET,tokVAL,tokEXPUNC,tokSEMICOL,
-    tokERR
+    tokEXIT,tokERR
 
 }TokenType;
 
@@ -40,7 +41,7 @@ typedef struct tokenTag{
 
 typedef enum{
     selectNode,attrNode,whereNode,tblNode,stmtNode,exprNode,op1Node,op2Node,op3Node,
-    nameNode,insertNode,tupleNode
+    nameNode,insertNode,tupleNode,arguNode,arguValNode
 }NodeType;
 
 typedef struct nodeTag{
@@ -58,6 +59,7 @@ string code;
 int offset=0,lineNum=0,tokcount=0;
 Token *toks=NULL;
 Token tk = {"N/A",NAtk,0};
+BNode* mainbtreeroot = NULL;
 
 void make_tokenmap();
 int isReservedChar(char c);
@@ -73,6 +75,9 @@ int isStmt(TokenType type);
 int isCompOp(TokenType type);
 int isRelOp(TokenType type);
 int scan_query(string linestream,int &lineNum);
+bool error =  false;
+bool showparseddata = false;
+
 Token anlzr();
 PNode* createNode(NodeType type);
 PNode* attr_more();
@@ -85,6 +90,7 @@ PNode* expr();
 PNode* stmtment();
 PNode* wherecond();
 PNode* select_sql();
+void execute_select(PNode* root);
 PNode* tplevalues();
 PNode* tple();
 PNode* attrib2();
@@ -92,8 +98,24 @@ PNode* tble2();
 PNode* insert_sql();
 BNode* traverse_inserttree(BNode *btreeroot, PNode *root);
 void execute_insert(PNode* root);
+void execute_bulkinsert(PNode* root);
+void loaddata(string importfile, string tblname);
+PNode* bulk_insert();
+void print_table();
 void parser();
 
+static const char *options="p";
+
+void parseArgs(int argc, char**argv){
+    extern char *optarg;
+    int c;
+    while ((c = getopt(argc, argv, options)) != -1) {
+        switch (c) {
+	case 'p': showparseddata = true; break;
+	default: break;
+        } // switch
+    } // while
+} // parseArgs
 
 void make_tokenmap(){
     reservedWord["SELECT"]=tokSELECT;
@@ -109,7 +131,9 @@ void make_tokenmap(){
     reservedWord["DELETE"]=tokDELETE;
     reservedWord["BULK"]=tokBULK;
     reservedWord["WITH"]=tokWITH;
-
+    reservedWord["FIELDTERMINATOR"]=tokFTERMNTR;
+    reservedWord["COMMIT"]=tokCOMMIT;
+    reservedWord["EXIT"]=tokEXIT;
 }
 
 int isReservedChar(char c){
@@ -213,8 +237,9 @@ int scan_query(string linestream,int &lineNum){ //check for invalid characters
     	if(isalnum(linestream[i])){
 	    word[wordsize++]=linestream[i];
 	    if(wordsize==MAXWORD){
-		  printf("ERROR: A word in line %d is too long. \n",lineNum);
-		  return 1;
+	 	printf("ERROR: A word in line %d is too long. \n",lineNum);
+		error = true;  
+		return 1;
 	    }
 	}else if(isspace(linestream[i]) || isReservedChar(linestream[i])){
 	    wordsize = 0;
@@ -222,6 +247,7 @@ int scan_query(string linestream,int &lineNum){ //check for invalid characters
 	    continue;
 	}else{
 	    printf("Error: Invalid character '%c' in line %d. \n",linestream[i],lineNum);
+	    error = true;
 	    return 1;
 	}
 
@@ -286,10 +312,12 @@ Token anlzr(){
 	    }
 	    if(code[i-1]=='.' || dotcount>1){
 		printf("ERROR: Invalid numerical value in line %d.\n",lineNum);
+		error = true;
 		token.type = tokEND;
 	    }
 	    if(maxdecplace>5){
 		printf("ERROR: The decimal places of a number in line %d exceeds the limit(4).\n",lineNum);
+		error = true;
 		token.type = tokEND;
 	    }
 	    temp=code.substr(idx,i-idx).c_str();
@@ -352,7 +380,8 @@ PNode* attr_more(){
 	}
     }else{
 	printf("ERROR: Expecting another attribute name in line %d.\n",tk.pos);
-	exit(1);
+	error = true;
+	//exit(1);
     }
     return ptreenode;
 }
@@ -367,10 +396,12 @@ PNode* attrib(){
  	    ptreenode->child1 = attr_more();
 	}
     }else if(tk.type == tokMULT){ //* or all attributes
+	ptreenode->token = toks[offset]; //attach to syntax tree
 	tk = toks[++offset];
     }else{
 	printf("ERROR: Invalid attribute name/s in the statement. %s\n",tk.str);
-	exit(1);
+	error = true;
+	//exit(1);
     }
     return ptreenode;     
 }
@@ -386,7 +417,8 @@ PNode* tble(){
 	}
     }else{
 	printf("ERROR: Invalid table name/s in the statement. %s\n",tk.str);
-	exit(1);
+	error = true;
+	//exit(1);
     }
     return ptreenode;
 }
@@ -403,7 +435,8 @@ PNode* op3(){
             return ptreenode;
     	}else{
             printf("ERROR: Line %d expects ')'.\n",tk.pos);
-            exit(1);
+	    error = true;
+            //exit(1);
     	}
     }else if(tk.type==tokNAME){
 	ptreenode->token = toks[offset]; //attach to syntax tree
@@ -415,7 +448,8 @@ PNode* op3(){
         return ptreenode;
     }else{
         printf("ERROR: Invalid expression.\n",tk.pos);
-        exit(1);
+	error = true;
+        //exit(1);
     }
 }
 
@@ -481,11 +515,13 @@ PNode* stmtment(){
 	    //Add Function
 	}else{
 	    printf("ERROR: Invalid where clause.");
-	    exit(1);
+	    error = true;
+	    //exit(1);
 	}
     }else{
 	printf("ERROR: Invalid where clause.");
-	exit(1);
+	error = true;
+	//exit(1);
     }
     return ptreenode;
 }
@@ -507,7 +543,8 @@ PNode* select_sql(){
 	   tk = toks[++offset];
     }else{
        	printf("ERROR: Invalid select statement. %s\n",tk.str);
-	exit(1);
+	error = true;
+	//exit(1);
     }
 
     ptreenode->child2 = tble();
@@ -518,8 +555,17 @@ PNode* select_sql(){
 	return ptreenode;
     }else{
    	    printf("ERROR: Invalid closing of the statement.\n");
-	    exit(1);
+	    error = true;
+	    //exit(1);
     }
+}
+
+void execute_select(PNode* root){
+    string tmp = root->child1->token.str; //get attribute (Currently, the code can only support *(all))
+    string tblname = root->child2->token.str; //get name of table   
+   
+    if(root->child1->token.type==tokMULT && tblname=="STUDENT") print_table();
+    else printf("Current implementation only support SELECT * from STUDENT");
 }
 
 PNode* tplevalues(){
@@ -533,7 +579,8 @@ PNode* tplevalues(){
 	}
     }else{
 	printf("ERROR: Invalid insert statement: missing values.\n");
-	exit(1);
+	error = true;
+	//exit(1);
     } 
     return ptreenode; 
 }
@@ -544,7 +591,8 @@ PNode* tple(){
 	tk = toks[++offset];
     }else{
 	printf("ERROR: Invalid insert statement: expecting '(' after a comma.\n");
-	exit(1);
+	error = true;
+	//exit(1);
     }
     ptreenode->child1 = tplevalues();
 
@@ -552,7 +600,8 @@ PNode* tple(){
 	tk = toks[++offset];
     }else{
 	printf("ERROR: Invalid insert statement: no closing parenthesis.\n");
-	exit(1);
+	error = true;
+	//exit(1);
     }
 
     if(tk.type==tokCOMMA){
@@ -574,7 +623,8 @@ PNode* attrib2(){
 	}
     }else{
 	printf("ERROR: Invalid attribute name/s in the statement. %s\n",tk.str);
-	exit(1);
+	error = true;
+	//exit(1);
     }
 
     return ptreenode;  
@@ -588,7 +638,8 @@ PNode* tble2(){
 	tk = toks[++offset];
    }else{
 	printf("ERROR: Invalid insert statement: no table name.\n");
-	exit(1);
+	error = true;
+	//exit(1);
    }
    return ptreenode;
 }
@@ -599,7 +650,8 @@ PNode* insert_sql(){
 	   tk = toks[++offset];
     }else{
        	printf("ERROR: Invalid insert statement: no INTO keyword.\n");
-	exit(1);
+	error = true;
+	//exit(1);
     }
     
     ptreenode->child1 = tble2();
@@ -607,22 +659,23 @@ PNode* insert_sql(){
     if(tk.type==tokLPAR){ 
 	tk = toks[++offset];
 	ptreenode->child2 = attrib2();
+	if(tk.type==tokRPAR){ 
+	    tk = toks[++offset];
+        }else{
+	    printf("ERROR: Invalid insert statement: no parenthesis after attribute name/s.\n");
+	    error = true;
+	    //exit(1);
+        }
     }else{
 	return ptreenode; //attributes are not specified
-    }
-    
-    if(tk.type==tokRPAR){ 
-	tk = toks[++offset];
-    }else{
-	printf("ERROR: Invalid insert statement: no parenthesis after attribute name/s.\n");
-	exit(1);
     }
 
     if(tk.type==tokVALUES){ //check reserved token "VALUES"
 	tk = toks[++offset];
     }else{
        	printf("ERROR: Invalid insert statement: no VALUES keyword.\n");
-	exit(1);
+	error = true;
+	//exit(1);
     }
 
     ptreenode->child3 = tple();
@@ -631,10 +684,46 @@ PNode* insert_sql(){
 	    tk = toks[++offset];
     }else{
    	    printf("ERROR: Invalid closing of the statement.\n");
-	    exit(1);
+	    error = true;
+	    //exit(1);
     }
     
     return ptreenode;
+}
+
+PNode* arguval(){
+    PNode *ptreenode = createNode(arguValNode);
+    if(tk.type==tokVAL || tk.type==tokTEXT){
+	ptreenode->token = toks[offset]; //attach to syntax tree
+   	tk = toks[++offset];
+    }else{
+	printf("ERROR: Invalid bulk insert statement: missing value.\n");
+	error = true;
+	//exit(1);  
+    }
+    return ptreenode;
+}
+
+PNode* argu(){
+   PNode *ptreenode = createNode(arguNode);
+   if(tk.type==tokFTERMNTR){ 
+	ptreenode->token = toks[offset]; //attach to syntax tree
+	tk = toks[++offset];
+	if(tk.type==tokEQL){ 
+	    tk = toks[++offset];
+	    ptreenode->child1 = arguval(); //if argument requires a value
+	}
+
+        if(tk.type==tokCOMMA){ //more argument
+	    tk = toks[++offset];
+	    ptreenode->child2 = argu();
+	}
+   }else{
+	printf("ERROR: Invalid bulk insert statement: missing argument.\n");
+	error = true;
+	//exit(1);
+   }
+   return ptreenode;
 }
 
 PNode* bulk_insert(){
@@ -643,45 +732,104 @@ PNode* bulk_insert(){
 	   tk = toks[++offset];
     }else{
        	printf("ERROR: Invalid bulk insert statement: syntax error.\n");
-	exit(1);
+	error = true;
+	//exit(1);
     }
 
     ptreenode->child1 = tble2();
 
-    if(tk.type==tokVAL){ //check for input file
+    if(tk.type==tokFROM){ 
+	   tk = toks[++offset];
+    }else{
+       	printf("ERROR: Invalid bulk insert statement.no \"FROM\" keyword.\n");
+	error = true;
+	//exit(1);
+    }
+
+    if(tk.type==tokTEXT){ //check for input file
 	ptreenode->token = toks[offset]; //attach VAL to syntax tree
         tk = toks[++offset]; 
     }else{
        	printf("ERROR: Invalid bulk insert statement: input file error.\n");
-	exit(1);
+	error = true;
+	//exit(1);
     }
 
     if(tk.type==tokWITH){ //check for input file
         tk = toks[++offset]; 
     }else{
        	printf("ERROR: Invalid bulk insert statement: syntax error.\n");
-	exit(1);
+	error = true;
+	//exit(1);
     }
 
     if(tk.type==tokLPAR){ 
 	tk = toks[++offset];
-	//ptreenode->child2 = 
-    }else{
-	return ptreenode; //attributes are not specified
+	ptreenode->child2 = argu();
+	if(tk.type==tokRPAR){ 
+	    tk = toks[++offset];
+        }else{
+	    printf("ERROR: Invalid bulk insert statement: missing parenthesis.\n");
+	    error = true;
+	    //exit(1);
+        }
     }
 
-    if(tk.type==tokRPAR){ 
-	tk = toks[++offset];
+    if(tk.type==tokSEMICOL){ //end query
+	    tk = toks[++offset];;
     }else{
-	printf("ERROR: Invalid bulk insert statement: missing parenthesis.\n");
-	exit(1);
+   	    printf("ERROR: Invalid closing of the statement.\n");
+	    error = true;
+	    //exit(1);
     }
 
     return ptreenode;
 }
 
-PNode* delete_sql(){
+void loaddata(string importfile, string tblname){
+    vector<string> values;
+    unsigned long hashval;
+    string linestream,subtext;
+    ifstream fp1(importfile.c_str());
+    if(!fp1.is_open()){
+	printf("ERROR: Cannot open file %s.\n",importfile.c_str());
+	error = true;
+    }
 
+    int p1=0,p2=0;
+    for(int i=0;getline(fp1,linestream);i++){
+  	//printf("%s\n",linestream.c_str());
+	while(p2<linestream.length()-1){
+	    p2 = linestream.find_first_of(",\n",p1);
+	    subtext = linestream.substr(p1,p2-p1);
+	    values.push_back(subtext);
+	    //printf("%s\t",subtext.c_str());
+            p1 = p2+1;
+	}
+        hashval = hashkey((unsigned char*)values[0].c_str()); //hash value for primary key
+        mainbtreeroot = insert(mainbtreeroot,hashval,values);
+	p1=p2=0;
+	values.clear();
+    }
+  
+}
+
+void execute_bulkinsert(PNode* root){
+    vector<string> argu;
+    string importfile = root->token.str; //get table name
+    string tblname = root->child1->token.str; //get name of file
+    //printf("%s %s",tblname.c_str(),importfile.c_str());
+    //loadtree(tblname);
+    if(root->child2!=NULL){
+	//get argu
+    }
+    
+    loaddata(importfile,tblname);
+    //print_leaves(mainbtreeroot);
+}
+
+PNode* delete_sql(){
+    
 }
 
 
@@ -698,7 +846,6 @@ BNode* traverse_inserttree(BNode *btreeroot, PNode *root){
     hashval = hashkey((unsigned char*)root->child1->token.str); //hash value for primary key
     //printf("%lu\t",hashval);
     btreeroot = insert(btreeroot,hashval,values);
-    print_tree(btreeroot);
   
     if(root->child2!=NULL){
 	btreeroot = traverse_inserttree(btreeroot,root->child2); //visit next tuple
@@ -707,18 +854,75 @@ BNode* traverse_inserttree(BNode *btreeroot, PNode *root){
 }
 
 void execute_insert(PNode* root){
-    BNode* btreeroot = NULL;
     vector<string> attrib;
     string tblname = root->child1->token.str;
-    //loadtree(tblname);
     if(root->child2!=NULL){
 	//get attrs
     }
     char instruction;
-    unsigned long key = 14115941475790296603;
-    btreeroot = traverse_inserttree(btreeroot,root->child3);
+    //unsigned long key = 14115941475790296603;
+    mainbtreeroot = traverse_inserttree(mainbtreeroot,root->child3);
     //find_and_print(btreeroot, key, instruction == 'p');
+    //print_tree(mainbtreeroot);
     
+}
+
+void commit(){
+    int i;
+    FILE* pfile;
+    BNode * c = mainbtreeroot;
+    record * d;
+
+    pfile = fopen ("student.csv","w+");
+	
+    while (!c->is_leaf)
+	c = (BNode*) c->pointers[0];
+
+    while (true) {
+	for (i = 0; i < c->num_keys; i++) {
+            d = (record*)c->pointers[i];
+	    for(int j=0;j<T1_STRFIELD;j++){
+		    fprintf(pfile,"%s,",d->strval[j]);
+	    }
+	    fprintf(pfile,"\n");
+   	}
+	if (c->pointers[order - 1] != NULL) {
+	    c = (BNode*) c->pointers[order - 1];
+	}else
+	    break;
+   }
+   
+   if(tk.type==tokSEMICOL){ //end query
+	tk = toks[++offset];;
+   }else{
+   	printf("ERROR: Invalid closing of the statement.\n");
+	error = true;
+	//exit(1);
+   }
+   fclose(pfile);
+}
+
+void print_table(){
+    BNode * c = mainbtreeroot;
+    record * d;
+	
+    printf("\n");
+    while (!c->is_leaf)
+	c = (BNode*) c->pointers[0];
+
+    while (true) {
+	for (int i = 0; i < c->num_keys; i++) {
+            d = (record*)c->pointers[i];
+	    for(int j=0;j<T1_STRFIELD;j++){
+		    printf("%s,",d->strval[j]);
+	    }
+	    printf("\n");
+   	}
+	if (c->pointers[order - 1] != NULL) {
+	    c = (BNode*) c->pointers[order - 1];
+	}else
+	    break;
+   }
 }
 
 void parser(){
@@ -728,38 +932,46 @@ void parser(){
     if(tk.type==tokSELECT){ 
 	tk = toks[++offset];
 	root = select_sql();
+        if(error==false) execute_select(root);
     }else if(tk.type==tokINSERT){
     	tk = toks[++offset];
 	root = insert_sql();
-	execute_insert(root);
+	if(error==false) execute_insert(root);
     }else if(tk.type==tokDELETE){
      	tk = toks[++offset];
 	root = delete_sql();
     }else if(tk.type==tokBULK){
 	tk = toks[++offset];
 	root = bulk_insert();
+	if(error==false) execute_bulkinsert(root);
+    }else if(tk.type==tokCOMMIT){
+	tk = toks[++offset];
+	commit();
+    }else if(tk.type==tokEXIT){
+	tk = toks[++offset];
+	commit();
+        exit(1);
     }else{
-	printf("ERROR: Invalid start of the statement. %s\n",tk.str);
-	exit(1);
+	printf("ERROR: Invalid start of the statement %s.\n",tk.str);
+	error = true;
+	//exit(1);
     }
 
-    if(tk.type==tokEND) //tk is global so tk will be the end node if parsing works fine
-	    printf("Successful parsing!\n");
+    if(tk.type==tokEND && error==false) //tk is global so tk will be the end node if parsing works fine
+	printf("\n---Successful query!---\n\n");
     else{
-	    exit(1);
+        error = true;
+	//exit(1);
     }
 }
 
-int main(){
+int main(int argc, char **argv){
     string linestream;
 
-    ifstream fp1("query.txt");
-    if(!fp1.is_open()){
-	    printf("ERROR: Cannot open file.");
-	return 1;
-    }
+    parseArgs(argc,argv);
 
     make_tokenmap();
+    loaddata("student.csv","STUDENT");
 
     printf("> ");
     for(int i=0;getline(cin,linestream);i++){
@@ -773,16 +985,22 @@ int main(){
     
 	if(linestream[linestream.length()-1]==';'){
             //GET tokens
+	    offset=0;
             do{
 	    	tokcount++;
 	    	toks = (Token*)realloc(toks,tokcount*sizeof(Token)); 
 	    	toks[tokcount-1]= anlzr(); 
-	    	//printf("%s\t%d\n",toks[tokcount-1].str, toks[tokcount-1].type);
+	    	if(showparseddata) printf("%s\t%d\n",toks[tokcount-1].str, toks[tokcount-1].type);
     	    }while(toks[tokcount-1].type != tokEND);
 
-    	    offset=0;
+	    offset = 0;
     	    lineNum=0;
+            tokcount=0;
     	    parser();
+	    code.erase();
+	    error = false;
+	    free(toks);
+	    
 	}
 	printf("> ");
     }
